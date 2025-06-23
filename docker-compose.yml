@@ -1,0 +1,94 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: laravel-php
+    container_name: backend-dev
+    restart: unless-stopped
+    tty: true
+    working_dir: /var/www/
+    volumes:
+      - ./backend:/var/www/
+     # - './backend/storage/app/public:/var/www/public/storage' # add this line
+
+      
+    networks:
+      - app-network
+    depends_on:
+      - db
+    ports:
+      - "5173:5173"
+  webserver:
+    image: nginx:alpine
+    container_name: webserver-dev
+    ports:
+      - "8000:80"
+    volumes:
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+      - ./backend/public:/var/www/public
+      - ./backend/storage/app/public:/var/www/public/storage  # ✅ Add this line
+      - ./frontend:/var/www/frontend
+
+    networks:
+      - app-network
+    depends_on:
+      - backend
+  db:
+    image: mysql:5.7
+    container_name: db
+    restart: unless-stopped
+    tty: true
+    command: 
+    - --bind-address=0.0.0.0
+    - --skip-name-resolve
+    - --init-file=/etc/mysql/conf.d/init.sh
+
+    ports:
+      - "3307:3306" 
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - ./docker/mysql/init.sh:/etc/mysql/conf.d/init.sh
+      - dbdata:/var/lib/mysql
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: frontend-dev
+    container_name: frontend-dev
+    restart: unless-stopped
+    tty: true
+    working_dir: /var/www/frontend
+    volumes:
+      - ./frontend:/var/www/frontend
+
+    ports:  # Add this section
+      - "3000:3000" 
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3000
+    networks:
+      - app-network
+
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  dbdata:
+    driver: local
